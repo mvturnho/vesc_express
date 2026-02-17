@@ -45,11 +45,11 @@ set(COMPONENT_SRCS
 "lispBM/src/lispbm.c"
 "lispBM/src/eval_cps.c"
 "lispBM/platform/freertos/src/platform_mutex.c"
+"lispBM/platform/freertos/src/platform_timestamp.c"
 "lispBM/src/lbm_channel.c"
 "lispBM/src/lbm_c_interop.c"
 "lispBM/src/lbm_custom_type.c"
 "lispBM/src/lbm_flat_value.c"
-"lispBM/src/lbm_flags.c"
 "lispBM/src/lbm_prof.c"
 "lispBM/src/lbm_defrag_mem.c"
 "lispBM/src/lbm_image.c"
@@ -62,6 +62,7 @@ set(COMPONENT_SRCS
 "lispBM/src/extensions/lbm_dyn_lib.c"
 "lispBM/src/extensions/ttf_extensions.c"
 "lispBM/src/extensions/schrift.c"
+"lispBM/src/extensions/ttf_backend.c"
 
 "wifi/lispif_wifi_extensions.c"
 
@@ -103,6 +104,11 @@ set(COMPONENT_ADD_INCLUDEDIRS
 "hwconf/vesc/vdisp_dual"
 "hwconf/vesc/scope"
 "hwconf/vesc/duet"
+"hwconf/vesc/link"
+"hwconf/vesc/vdisp_900"
+"hwconf/vesc/nanolog"
+"hwconf/vesc/vbms16"
+"hwconf/vesc/rmcore"
 "hwconf/rescue"
 "hwconf/avaspark"
 
@@ -128,6 +134,7 @@ add_compile_definitions(
     LBM_USE_DYN_ARRAYS
     LBM_USE_TIME_QUOTA
     LBM_USE_ERROR_LINENO
+    LBM_USE_MACRO_REST_ARGS
 )
 
 if((DEFINED ENV{HW_SRC}) OR (DEFINED ENV{HW_HEADER}))

@@ -77,6 +77,16 @@ bool lbm_image_save_extensions(void);
 bool lbm_image_save_constant_heap_ix(void);
 
 /**
+ * Get the const_heap_index as it is set in the image handling.
+ * This value can be used to determine image "health" upon startup.
+ * an image where the haep_index is not stored correctly is corrupt
+ * and should be cleared! The const heap index should point to a clear
+ * word in flash.
+ * \return index into const heap.
+ */
+lbm_uint lbm_image_const_heap_index(void);
+
+/**
  * Add a symbol to the image.
  * Symbols added to the image are restored upon image-boot.
  * \param name Symbol name.
@@ -127,5 +137,22 @@ bool lbm_image_boot(void);
  * \return pointer to version string or NULL.
  */
 char *lbm_image_get_version(void);
+
+
+
+/**
+ * Sharing table The sharing table lists addresses that are shared
+ * (referenced in more than one place). Additionally the sharing
+ * table has a number of "fields" that be written to once(if the
+ * sharing table is in flash) and read multiple times.
+ */
+typedef struct {
+  int32_t start;
+  int32_t num;
+} sharing_table;
+
+int32_t sharing_table_contains(sharing_table *st, lbm_uint addr);
+bool sharing_table_set_field(sharing_table *st, int32_t ix, int32_t field, uint32_t value);
+uint32_t sharing_table_get_field(sharing_table *st, int32_t ix, int32_t field);
 
 #endif

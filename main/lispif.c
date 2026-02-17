@@ -38,7 +38,7 @@
 #define GC_STACK_SIZE			160
 #define PRINT_STACK_SIZE		128
 #ifndef EXTENSION_STORAGE_SIZE
-#define EXTENSION_STORAGE_SIZE	346
+#define EXTENSION_STORAGE_SIZE	350
 #endif
 #ifndef USER_EXTENSION_STORAGE_SIZE
 #define USER_EXTENSION_STORAGE_SIZE 0
@@ -55,16 +55,11 @@ static uint32_t *memory_array;
 static uint32_t *bitmap_array;
 static lbm_extension_t extension_storage[EXTENSION_STORAGE_SIZE + USER_EXTENSION_STORAGE_SIZE];
 
+static bool string_tok_valid = false;
 static volatile lbm_uint *image_ptr = 0;
 static int image_max_ind = 0;
 
-static lbm_string_channel_state_t string_tok_state;
-static lbm_char_channel_t string_tok;
-static lbm_buffered_channel_state_t buffered_tok_state;
-static lbm_char_channel_t buffered_string_tok;
-static bool string_tok_valid = false;
-
-static TaskHandle_t eval_task;
+static TaskHandle_t eval_task = 0;
 static volatile bool lisp_thd_running = false;
 static SemaphoreHandle_t lbm_mutex;
 
@@ -92,7 +87,6 @@ void(*ext_load_callbacks[EXT_LOAD_CALLBACK_LEN])(bool) = {0};
  */
 
 // Private functions
-static uint32_t timestamp_callback(void);
 static void sleep_callback(uint32_t us);
 static bool image_write(uint32_t w, int32_t ix, bool const_heap);
 static void eval_thread(void *arg);
@@ -100,28 +94,30 @@ static void eval_thread(void *arg);
 // Global
 extern lbm_const_heap_t *lbm_const_heap_state;
 
+#define LBM_MEMORY_SIZE_KB(kb) LBM_MEMORY_SIZE_64BYTES_TIMES_X((kb * 16))
+#define LBM_BITMAP_SIZE_KB(kb) LBM_MEMORY_BITMAP_SIZE((kb * 16))
+
 void lispif_init(void) {
 	heap_size = (2048 + 512);
-	mem_size = LBM_MEMORY_SIZE_32K;
-	bitmap_size = LBM_MEMORY_BITMAP_SIZE_32K;
+	mem_size = LBM_MEMORY_SIZE_KB(32);
+	bitmap_size = LBM_BITMAP_SIZE_KB(32);
 
 	if (backup.config.wifi_mode == WIFI_MODE_DISABLED &&
 			backup.config.ble_mode == BLE_MODE_DISABLED) {
 		heap_size *= 2;
-		mem_size *= 3;
-		bitmap_size *= 3;
+		mem_size = LBM_MEMORY_SIZE_KB(86);
+		bitmap_size = LBM_BITMAP_SIZE_KB(86);
 	} else if (backup.config.wifi_mode == WIFI_MODE_DISABLED ||
 			backup.config.ble_mode == BLE_MODE_DISABLED) {
 		heap_size *= 2;
-		mem_size *= 2;
-		bitmap_size *= 2;
+		mem_size = LBM_MEMORY_SIZE_KB(64);
+		bitmap_size = LBM_BITMAP_SIZE_KB(64);
 	}
 
 	heap = memalign(8, heap_size * sizeof(lbm_cons_t));
 	memory_array = heap_caps_malloc(mem_size * sizeof(uint32_t), MALLOC_CAP_DMA);
 	bitmap_array = heap_caps_malloc(bitmap_size * sizeof(uint32_t), MALLOC_CAP_DMA);
 
-	memset(&buffered_tok_state, 0, sizeof(buffered_tok_state));
 	lbm_mutex = xSemaphoreCreateMutex();
 	lispif_restart(false, true, true);
 
@@ -179,6 +175,10 @@ static void prof_timer_callback(void* arg) {
 }
 
 static bool pause_eval(uint32_t num_free, uint32_t timeout_ms) {
+	if (!lisp_thd_running) {
+		return false;
+	}
+	
 	int timeout_cnt = timeout_ms;
 
 	if (num_free > 0) {
@@ -228,8 +228,12 @@ void lispif_process_cmd(unsigned char *data, unsigned int len,
 		float mem_use = 0.0;
 
 		if (lisp_thd_running) {
-			uint32_t timeTot = portGET_RUN_TIME_COUNTER_VALUE();
-			portALT_GET_RUN_TIME_COUNTER_VALUE(timeTot);
+			uint32_t timeTot = 0;
+#ifdef portALT_GET_RUN_TIME_COUNTER_VALUE
+			portALT_GET_RUN_TIME_COUNTER_VALUE( timeTot );
+#else
+			timeTot = portGET_RUN_TIME_COUNTER_VALUE();
+#endif
 			if (timeTot > 0) {
 				TaskStatus_t stat;
 				vTaskGetInfo(eval_task, &stat, pdFALSE, 0);
@@ -516,6 +520,9 @@ void lispif_process_cmd(unsigned char *data, unsigned int len,
 				if (pause_eval(30, 1000)) {
 					repl_buffer = lbm_malloc_reserve(len);
 					if (repl_buffer) {
+						static lbm_string_channel_state_t string_tok_state;
+						static lbm_char_channel_t string_tok;
+
 						memcpy(repl_buffer, data, len);
 						lbm_create_string_char_channel(&string_tok_state, &string_tok, repl_buffer);
 						repl_cid = lbm_load_and_eval_expression(&string_tok);
@@ -542,6 +549,9 @@ void lispif_process_cmd(unsigned char *data, unsigned int len,
 	} break;
 
 	case COMM_LISP_STREAM_CODE: {
+		static lbm_buffered_channel_state_t buffered_tok_state = {0};
+		static lbm_char_channel_t buffered_string_tok = {0};
+
 		int32_t ind = 0;
 		int32_t offset = buffer_get_int32(data, &ind);
 		int32_t tot_len = buffer_get_int32(data, &ind);
@@ -730,9 +740,20 @@ void lispif_stop(void) {
 	lispif_lock_lbm();
 
 	lbm_kill_eval();
+	int timeout = 2000;
 	while (lisp_thd_running) {
 		lbm_kill_eval();
 		vTaskDelay(1 / portTICK_PERIOD_MS);
+		timeout--;
+		if (timeout == 0) {
+			break;
+		}
+	}
+
+	if (lisp_thd_running) {
+		vTaskDelete(eval_task);
+		lisp_thd_running = false;
+		commands_printf_lisp("Killed eval task as it didn't stop when asked to");
 	}
 
 	lispif_unlock_lbm();
@@ -755,11 +776,13 @@ bool lispif_restart(bool print, bool load_code, bool load_imports) {
 	if (!load_code || (code_data != 0 && code_len > 0)) {
 		lispif_disable_all_events();
 
-		if (lisp_thd_running && lbm_image_exists()) {
-			lbm_image_save_constant_heap_ix();
-		}
+		bool save_heap = lisp_thd_running && lbm_image_exists();
 
 		lispif_stop();
+
+		if (save_heap) {
+			lbm_image_save_constant_heap_ix();
+		}
 
 		int code_chars = 0;
 		if (code_data) {
@@ -783,7 +806,6 @@ bool lispif_restart(bool print, bool load_code, bool load_imports) {
 					PRINT_STACK_SIZE, extension_storage,
 					EXTENSION_STORAGE_SIZE + USER_EXTENSION_STORAGE_SIZE);
 
-			lbm_set_timestamp_us_callback(timestamp_callback);
 			lbm_set_usleep_callback(sleep_callback);
 			lbm_set_printf_callback(commands_printf_lisp);
 			lbm_set_ctx_done_callback(done_callback);
@@ -875,6 +897,9 @@ bool lispif_restart(bool print, bool load_code, bool load_imports) {
 		}
 
 		if (load_code) {
+			static lbm_string_channel_state_t string_tok_state;
+			static lbm_char_channel_t string_tok;
+
 			if (print) {
 				if (main_found) {
 					commands_printf_lisp("Running main-function");
@@ -917,9 +942,8 @@ void lispif_add_ext_load_callback(void (*p_func)(bool)) {
 	}
 }
 
-static uint32_t timestamp_callback(void) {
-	TickType_t t = xTaskGetTickCount();
-	return (uint32_t) ((1000 / portTICK_PERIOD_MS) * t);
+bool lispif_is_eval_task(void) {
+	return eval_task == xTaskGetCurrentTaskHandle();
 }
 
 static void sleep_callback(uint32_t us) {

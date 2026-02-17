@@ -10,8 +10,8 @@
 (defun leading-zeroes (n)
   (if (< n 10) (str-merge "000" (to-str n))
     (if (< n 100) (str-merge "00" (to-str n))
-      (if < n 1000) (str-merge "0" (to-str n))
-      ( to-str n))))
+      (if (< n 1000) (str-merge "0" (to-str n))
+        (to-str n)))))
 
 
 (defun gif-frame (n) 
@@ -332,10 +332,10 @@
                  (x-code (if (is-read-eval-txt x)
                              (read-program (ix x 1))
                            x))
-                 (res (eval-program nil x-code))
+                 (res (eval-program x-code))
                  (res-str (to-str res)))
            ;(let ((c-strings (map (lambda (c) (str-merge (pretty c) "\n"))  x))
-           ;      (res (eval-program nil x))
+           ;      (res (eval-program x))
            ;      (res-str (to-str res)))
              {
              (rend "<tr>\n")
@@ -374,7 +374,7 @@
                  (x-code (if (is-read-eval-txt x)
                              (read-program (ix x 1))
                            x))
-                 (res (eval-program nil x-code))
+                 (res (eval-program x-code))
                  (res-str (to-str res))
                  (png (png-file)))
              {
@@ -554,7 +554,7 @@
                           ))
          ( (table (? h) (? d))
            (render-table rend h d))
-         ( _ (render rend ss))
+         ( _ (render rend ss)) ;; Not it is not a call to render-it
          ))
 
 
@@ -566,6 +566,7 @@
            (render-it rend x)
            (render rend xs)
            })
+         ( (? x) (print "RENDER ERROR: " x))
          ))
 
 (define end nil)

@@ -38,6 +38,7 @@
 #include "lbm_channel.h"
 #include "lbm_flat_value.h"
 #include "lbm_image.h"
+#include "platform_timestamp.h"
 
 #define WAIT_TIMEOUT 2500
 
@@ -106,12 +107,6 @@ void *eval_thd_wrapper(void *v) {
   (void)v;
   lbm_run_eval();
   return NULL;
-}
-
-uint32_t timestamp_callback() {
-  struct timeval tv;
-  gettimeofday(&tv,NULL);
-  return (uint32_t)(tv.tv_sec * 1000000 + tv.tv_usec);
 }
 
 void sleep_callback(uint32_t us) {
@@ -461,8 +456,11 @@ int main(int argc, char **argv) {
   bool stream_source = false;
   bool incremental = false;
 
+  static pthread_t timestamp_thread = 0;
   pthread_t lispbm_thd;
   lbm_cons_t *heap_storage = NULL;
+
+  pthread_create(&timestamp_thread, NULL, lbm_timestamp_cacher, NULL);
 
   int c;
   opterr = 1;
@@ -626,7 +624,6 @@ int main(int argc, char **argv) {
   }
 
   lbm_set_dynamic_load_callback(dyn_load);
-  lbm_set_timestamp_us_callback(timestamp_callback);
   lbm_set_usleep_callback(sleep_callback);
   lbm_set_printf_callback(printf);
   lbm_set_critical_error_callback(critical_error);
@@ -645,11 +642,11 @@ int main(int argc, char **argv) {
   lbm_pause_eval_with_gc(20);
   int wait_count = 0;
   while (lbm_get_eval_state() != EVAL_CPS_STATE_PAUSED) {
-    if (wait_count >= 100) {
+    if (wait_count >= 1000) {
       printf("Could not pause the evaluator\n");
       return FAIL;
     }
-    printf("Wait for pause init\n");
+    if (wait_count % 100 == 99) printf("Wait for pause init\n");
     sleep_callback(100);
     wait_count++;
   }
@@ -700,10 +697,10 @@ int main(int argc, char **argv) {
         if ((stream_i % 100) == 99) {
           printf("stuck streaming\n");
           stuck_count ++;
-          if (stuck_count == 10) return 0;
+          if (stuck_count == 20) return 0;
         }
         stream_i ++;
-        sleep_callback(2);
+        sleep_callback(50);
       }
     }
   }

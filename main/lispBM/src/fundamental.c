@@ -245,6 +245,17 @@ static bool array_struct_equality(lbm_value a, lbm_value b) {
   return res;
 }
 
+// ////////////////////////////////////////////////////////////
+// Added pointer comparison before recurring on arrays and lists.
+// struct_eq can exhaust stack! but the pointer check makes it
+// a highly unlikely event occurring normally.
+//
+// To run out of C stack now you would have to
+// create in memory two identical structures that are
+// large and pointer-wise unique but structuraly identical.
+//
+// Unknowns that impact this is argument is that
+// the stack depth is unknown to me (it is a result of the integrator's choices).
 bool struct_eq(lbm_value a, lbm_value b) {
 
   bool res = false;
@@ -262,6 +273,10 @@ bool struct_eq(lbm_value a, lbm_value b) {
     case LBM_TYPE_CHAR:
       res = (lbm_dec_char(a) == lbm_dec_char(b)); break;
     case LBM_TYPE_CONS:
+      if (a == b) { // quick path if pointers equal (pointers equal => structural equal)
+        res = true;
+        break;
+      }
       res = ( struct_eq(lbm_car(a),lbm_car(b)) &&
               struct_eq(lbm_cdr(a),lbm_cdr(b)) ); break;
     case LBM_TYPE_I32:
@@ -279,6 +294,10 @@ bool struct_eq(lbm_value a, lbm_value b) {
     case LBM_TYPE_ARRAY:
       res =  bytearray_equality(a, b); break;
     case LBM_TYPE_LISPARRAY:
+      if (a == b) { // quick path if pointers equal (pointers equal => structural equal)
+        res = true;
+        break;
+      }
       res =  array_struct_equality(a, b); break;
     }
   }
@@ -568,10 +587,10 @@ static lbm_value fundamental_geq(lbm_value *args, lbm_uint nargs, eval_context_t
     for (lbm_uint i = 1; i < nargs; i ++) {
       lbm_uint b = args[i];
       if (IS_NUMBER(b)) {
-	r = r && (compare_num(a, b) >= 0);
+        r = r && (compare_num(a, b) >= 0);
       } else {
-	lbm_set_error_suspect(b);
-	goto geq_type_error;
+        lbm_set_error_suspect(b);
+        goto geq_type_error;
       }
     }
   } else {
@@ -865,9 +884,10 @@ static lbm_value fundamental_set_ix(lbm_value *args, lbm_uint nargs, eval_contex
       }
       lbm_uint ix = (lbm_uint)ix_pre;
       while (lbm_is_cons_rw(curr)) { // rw as we are going to modify
-        lbm_value next = lbm_cdr(curr);
+        lbm_cons_t *curr_cell = lbm_ref_cell(curr);
+        lbm_value next = curr_cell->cdr;
         if (i == ix) {
-          lbm_set_car(curr, args[2]);
+          curr_cell->car = args[2];
           result = args[0]; // Acts as true and as itself.
           break;
         } else if (lbm_is_symbol_nil(next)) {
@@ -930,34 +950,38 @@ static lbm_value fundamental_acons(lbm_value *args, lbm_uint nargs, eval_context
   return result;
 }
 
-static bool set_assoc(lbm_value *res, lbm_value keyval, lbm_value assocs) {
-  lbm_value curr = assocs;
+// Since an a-list can be partially
+// constant an additional check for read/write cell
+// is needed before the actual update.
+static lbm_value set_assoc(lbm_value assoc_list, lbm_value keyval) {
+  lbm_value curr = assoc_list;
   lbm_value key = lbm_car(keyval);
   while (lbm_is_cons(curr)) {
-    if (struct_eq(key, lbm_caar(curr))) {
-      lbm_set_car(curr, keyval);
-      *res = assocs;
-      return true;
+    lbm_cons_t *curr_cell = lbm_ref_cell(curr);
+    if (struct_eq(key, lbm_car(curr_cell->car))) {
+      if (!lbm_ptr_is_constant(curr)) {
+        curr_cell->car = keyval;
+      }
+      return assoc_list;
     }
-    curr = lbm_cdr(curr);
+    curr = curr_cell->cdr;
   }
-  return false;
+  // Assoc-list does not contain key.
+  // Note: Memory errors are implicitly handled by the caller.
+  return lbm_cons(keyval, assoc_list);
 }
 
 static lbm_value fundamental_set_assoc(lbm_value *args, lbm_uint nargs, eval_context_t *ctx) {
   (void)ctx;
-  lbm_value result = ENC_SYM_TERROR;
   lbm_value keyval;
   if (nargs == 3) {
     keyval = lbm_cons(args[1], args[2]);
+    // Check if ENC_SYM_MERROR.
     if (lbm_is_symbol(keyval)) return keyval;
   } else if (nargs == 2 && lbm_is_cons(args[1])) {
     keyval = args[1];
-  } else return result;
-  if (!set_assoc(&result, keyval, args[0])) {
-    result = ENC_SYM_EERROR;
-  }
-  return result;
+  } else return ENC_SYM_TERROR;
+  return set_assoc(args[0], keyval);
 }
 
 static lbm_value fundamental_cossa(lbm_value *args, lbm_uint nargs, eval_context_t *ctx) {
@@ -1089,6 +1113,7 @@ static lbm_value fundamental_shl(lbm_value *args, lbm_uint nargs, eval_context_t
     retval = ENC_SYM_TERROR;
     if (IS_NUMBER(args[0]) && IS_NUMBER(args[1])) {
       switch (lbm_type_of_functional(args[0])) {
+      case LBM_TYPE_CHAR: retval = lbm_enc_char(lbm_dec_char(args[0]) << lbm_dec_as_u32(args[1])); break;
       case LBM_TYPE_I: retval = lbm_enc_i(lbm_dec_i(args[0]) << lbm_dec_as_u32(args[1])); break;
       case LBM_TYPE_U: retval = lbm_enc_u(lbm_dec_u(args[0]) << lbm_dec_as_u32(args[1])); break;
       case LBM_TYPE_U32: retval = lbm_enc_u32(lbm_dec_u32(args[0]) << lbm_dec_as_u32(args[1])); break;
@@ -1108,6 +1133,7 @@ static lbm_value fundamental_shr(lbm_value *args, lbm_uint nargs, eval_context_t
     retval = ENC_SYM_TERROR;
     if (IS_NUMBER(args[0]) && IS_NUMBER(args[1])) {
       switch (lbm_type_of_functional(args[0])) {
+      case LBM_TYPE_CHAR: retval = lbm_enc_char(lbm_dec_char(args[0]) >> lbm_dec_as_u32(args[1])); break;
       case LBM_TYPE_I: retval = lbm_enc_i(lbm_dec_i(args[0]) >> lbm_dec_as_u32(args[1])); break;
       case LBM_TYPE_U: retval = lbm_enc_u(lbm_dec_u(args[0]) >> lbm_dec_as_u32(args[1])); break;
       case LBM_TYPE_U32: retval = lbm_enc_u32(lbm_dec_u32(args[0]) >> lbm_dec_as_u32(args[1])); break;
@@ -1127,6 +1153,7 @@ static lbm_value fundamental_bitwise_and(lbm_value *args, lbm_uint nargs, eval_c
     retval = ENC_SYM_TERROR;
     if (IS_NUMBER(args[0]) && IS_NUMBER(args[1])) {
       switch (lbm_type_of_functional(args[0])) {
+      case LBM_TYPE_CHAR: retval = lbm_enc_char(lbm_dec_char(args[0]) & lbm_dec_as_char(args[1])); break;
 #ifdef LBM64
       case LBM_TYPE_I: retval = lbm_enc_i(lbm_dec_i(args[0]) & lbm_dec_as_i64(args[1])); break;
       case LBM_TYPE_U: retval = lbm_enc_u(lbm_dec_u(args[0]) & lbm_dec_as_u64(args[1])); break;
@@ -1151,6 +1178,7 @@ static lbm_value fundamental_bitwise_or(lbm_value *args, lbm_uint nargs, eval_co
     retval = ENC_SYM_TERROR;
     if (IS_NUMBER(args[0]) && IS_NUMBER(args[1])) {
       switch (lbm_type_of_functional(args[0])) {
+      case LBM_TYPE_CHAR: retval = lbm_enc_char(lbm_dec_char(args[0]) | lbm_dec_as_char(args[1])); break;
 #ifdef LBM64
       case LBM_TYPE_I: retval = lbm_enc_i(lbm_dec_i(args[0]) | lbm_dec_as_i64(args[1])); break;
       case LBM_TYPE_U: retval = lbm_enc_u(lbm_dec_u(args[0]) | lbm_dec_as_u64(args[1])); break;
@@ -1175,6 +1203,7 @@ static lbm_value fundamental_bitwise_xor(lbm_value *args, lbm_uint nargs, eval_c
     retval = ENC_SYM_TERROR;
     if (IS_NUMBER(args[0]) && IS_NUMBER(args[1])) {
       switch (lbm_type_of_functional(args[0])) {
+      case LBM_TYPE_CHAR: retval = lbm_enc_char(lbm_dec_char(args[0]) ^ lbm_dec_as_char(args[1])); break;
 #ifdef LBM64
       case LBM_TYPE_I: retval = lbm_enc_i(lbm_dec_i(args[0]) ^ lbm_dec_as_i64(args[1])); break;
       case LBM_TYPE_U: retval = lbm_enc_u(lbm_dec_u(args[0]) ^ lbm_dec_as_u64(args[1])); break;
@@ -1199,6 +1228,7 @@ static lbm_value fundamental_bitwise_not(lbm_value *args, lbm_uint nargs, eval_c
     retval = ENC_SYM_TERROR;
     if (IS_NUMBER(args[0])) {
       switch (lbm_type_of_functional(args[0])) {
+      case LBM_TYPE_CHAR: retval = lbm_enc_char(~lbm_dec_char(args[0])); break;
       case LBM_TYPE_I: retval = lbm_enc_i(~lbm_dec_i(args[0])); break;
       case LBM_TYPE_U: retval = lbm_enc_u(~lbm_dec_u(args[0])); break;
       case LBM_TYPE_U32: retval = lbm_enc_u32(~lbm_dec_u32(args[0])); break;
@@ -1473,6 +1503,26 @@ static lbm_value fundamental_is_constant(lbm_value *args, lbm_uint argn, eval_co
   return res;
 }
 
+static lbm_value fundamental_member(lbm_value *args, lbm_uint argn, eval_context_t *ctx) {
+  (void)ctx;
+  lbm_value res = ENC_SYM_TERROR;
+  if (argn == 2 && lbm_is_list(args[1])) {
+    res = ENC_SYM_NIL;
+    lbm_value curr = args[1];
+
+    while (lbm_is_cons(curr)) {
+      lbm_cons_t *cell = lbm_ref_cell(curr);
+      if (struct_eq(cell->car, args[0])) {
+        res = args[1];
+        break;
+      }
+      curr = cell->cdr;
+    }
+  }
+  return res;
+}
+
+
 const fundamental_fun fundamental_table[] =
   {fundamental_add,
    fundamental_sub,
@@ -1541,5 +1591,6 @@ const fundamental_fun fundamental_table[] =
    fundamental_identity,
    fundamental_array,
    fundamental_is_string,
-   fundamental_is_constant
+   fundamental_is_constant,
+   fundamental_member
   };
