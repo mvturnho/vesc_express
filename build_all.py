@@ -52,10 +52,16 @@ def get_hw_configs():
         except Exception as e:
             print(f"Error parseing {f}: {e}")
             
+    # Sort configs by target (SoC) first, then by name
+    # This groups builds by architecture (e.g. all C3s, then all S3s)
+    configs.sort(key=lambda x: (x['target'], x['name']))
+            
     return configs
 
-def build_target(config):
-    build_dir = os.path.join("build", config['name'].replace(" ", "_"))
+def build_target(config, output_dir):
+    # Sanitize name for filesystem
+    safe_name = config['name'].replace(" ", "_")
+    build_dir = os.path.join("build", safe_name)
     
     print_status(f"\n========================================")
     print_status(f"Building: {config['name']} ({config['target']})")
@@ -66,20 +72,9 @@ def build_target(config):
     # Ensure build dir exists
     os.makedirs(build_dir, exist_ok=True)
     
-    # 1. Set Target (Only if sdkconfig doesn't exist or target changed)
-    # Note: idf.py set-target clears configuration. 
-    # For a clean build on a new dir, we run it.
-    sdkconfig_path = os.path.join(build_dir, "sdkconfig")
-    
+    # 1. Set Target
     cmd_base = ["idf.py", "-B", build_dir, f"-DHW_NAME={config['name']}"]
     
-    # We always set-target to ensure correct IDF_TARGET is active for this build dir
-    # This might wipe sdkconfig, so we might want to check if it matches first? 
-    # Actually, CMakeLists.txt now respects IDF_TARGET. 
-    # If we pass -DHW_NAME key, CMake sets IDF_TARGET.
-    # But idf.py needs to know the target to load the right toolchain.
-    
-    # Let's run set-target. 
     print_status("--> Setting target...")
     res = subprocess.run(cmd_base + ["set-target", config['target']], shell=True if os.name == 'nt' else False)
     if res.returncode != 0:
@@ -91,6 +86,29 @@ def build_target(config):
     
     if res.returncode == 0:
         print_status(f"SUCCESS: {config['name']}", Colors.OKGREEN)
+        
+        # 3. Copy artifacts
+        try:
+            # Source paths (ESP-IDF default output name is project name)
+            # Assuming project name is "vesc_express" from CMakeLists.txt
+            src_bin = os.path.join(build_dir, "vesc_express.bin")
+            src_elf = os.path.join(build_dir, "vesc_express.elf")
+            
+            # Destination paths
+            dest_bin = os.path.join(output_dir, f"vesc_express_{safe_name}.bin")
+            dest_elf = os.path.join(output_dir, f"vesc_express_{safe_name}.elf")
+            
+            if os.path.exists(src_bin):
+                shutil.copy2(src_bin, dest_bin)
+                print_status(f"--> Copied bin to {dest_bin}")
+                
+            if os.path.exists(src_elf):
+                shutil.copy2(src_elf, dest_elf)
+                print_status(f"--> Copied elf to {dest_elf}")
+                
+        except Exception as e:
+            print_status(f"Warning: Failed to copy artifacts: {e}", Colors.WARNING)
+            
         return True
     else:
         print_status(f"FAILED: {config['name']}", Colors.FAIL)
@@ -101,6 +119,12 @@ def main():
         print_status("Error: main/hwconf directory not found", Colors.FAIL)
         sys.exit(1)
         
+    # Prepare output directory
+    output_dir = "build_output"
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+        print_status(f"Created output directory: {output_dir}")
+        
     configs = get_hw_configs()
     print_status(f"Found {len(configs)} hardware configurations.")
     
@@ -108,13 +132,15 @@ def main():
     failed_configs = []
     
     for config in configs:
-        if build_target(config):
+        if build_target(config, output_dir):
             success_count += 1
         else:
             failed_configs.append(config['name'])
             
     print("\n" + "="*40)
     print(f"Build Summary: {success_count}/{len(configs)} Succeeded")
+    print(f"Artifacts: {os.path.abspath(output_dir)}")
+    
     if failed_configs:
         print_status(f"Failed: {', '.join(failed_configs)}", Colors.FAIL)
         sys.exit(1)
