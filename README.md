@@ -45,7 +45,7 @@ All targets can be built with
 python build_all.py
 ```
 
-That will create all required firmware files under the build_out directory, with hardware names as child directories. All target switching is handled automatically with the build_all command.
+That will create all required firmware files under the build_output directory, with hardware names as child directories. All target switching is handled automatically with the build_all command.
 
 ### Custom Hardware Targets
 
