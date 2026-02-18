@@ -96,6 +96,14 @@
 #include <stdarg.h>
 #include <string.h>
 
+#if CONFIG_IDF_TARGET_ESP32S3
+	#define LBM_EVENTS_TASK_STACK_SIZE 1280
+#elif CONFIG_IDF_TARGET_ESP32C3
+	#define LBM_EVENTS_TASK_STACK_SIZE 640
+#else
+	#error "Unsupported target"
+#endif
+
 typedef struct {
 	// BMS
 	lbm_uint v_tot;
@@ -6469,7 +6477,7 @@ void lispif_load_vesc_extensions(bool main_found) {
 		}
 		xSemaphoreGive(rmsg_mutex);
 
-		xTaskCreatePinnedToCore(event_task, "LBM Events", 1280, NULL, 7, NULL, tskNO_AFFINITY);
+		xTaskCreatePinnedToCore(event_task, "LBM Events", LBM_EVENTS_TASK_STACK_SIZE, NULL, 7, NULL, tskNO_AFFINITY);
 		event_task_running = true;
 	}
 

@@ -34,6 +34,7 @@
 #include "lbm_image.h"
 #include "esp_partition.h"
 #include "esp_ota_ops.h"
+#include "esp_system.h"
 
 #define GC_STACK_SIZE			160
 #define PRINT_STACK_SIZE		128
@@ -98,9 +99,15 @@ extern lbm_const_heap_t *lbm_const_heap_state;
 #define LBM_BITMAP_SIZE_KB(kb) LBM_MEMORY_BITMAP_SIZE((kb * 16))
 
 void lispif_init(void) {
+#ifdef CONFIG_IDF_TARGET_ESP32S3
+	heap_size = (3072 + 512);
+	mem_size = LBM_MEMORY_SIZE_KB(48);
+	bitmap_size = LBM_BITMAP_SIZE_KB(48);
+#else
 	heap_size = (2048 + 512);
 	mem_size = LBM_MEMORY_SIZE_KB(32);
 	bitmap_size = LBM_BITMAP_SIZE_KB(32);
+#endif
 
 	if (backup.config.wifi_mode == WIFI_MODE_DISABLED &&
 			backup.config.ble_mode == BLE_MODE_DISABLED) {
@@ -117,6 +124,12 @@ void lispif_init(void) {
 	heap = memalign(8, heap_size * sizeof(lbm_cons_t));
 	memory_array = heap_caps_malloc(mem_size * sizeof(uint32_t), MALLOC_CAP_DMA);
 	bitmap_array = heap_caps_malloc(bitmap_size * sizeof(uint32_t), MALLOC_CAP_DMA);
+
+	if (!heap || !memory_array || !bitmap_array) {
+		commands_printf_lisp("LispBM malloc failed: heap=%p mem=%p bmp=%p (free heap: %u)",
+				heap, memory_array, bitmap_array,
+				(unsigned)esp_get_free_heap_size());
+	}
 
 	lbm_mutex = xSemaphoreCreateMutex();
 	lispif_restart(false, true, true);
@@ -800,11 +813,18 @@ bool lispif_restart(bool print, bool load_code, bool load_imports) {
 			image_len /= sizeof(lbm_uint);
 			image_len &= 0xFFFFFFF0;
 
-			lbm_init(heap, heap_size, memory_array, mem_size, bitmap_array,
+			bool lbm_ok = lbm_init(heap, heap_size, memory_array, mem_size, bitmap_array,
 					bitmap_size,
 					GC_STACK_SIZE,
 					PRINT_STACK_SIZE, extension_storage,
 					EXTENSION_STORAGE_SIZE + USER_EXTENSION_STORAGE_SIZE);
+
+			if (!lbm_ok) {
+				commands_printf_lisp("lbm_init failed (heap=%p mem=%p bmp=%p free=%u)",
+						heap, memory_array, bitmap_array,
+						(unsigned)esp_get_free_heap_size());
+				return false;
+			}
 
 			lbm_set_usleep_callback(sleep_callback);
 			lbm_set_printf_callback(commands_printf_lisp);
