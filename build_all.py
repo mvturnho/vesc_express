@@ -59,9 +59,7 @@ def get_hw_configs():
     return configs
 
 def build_target(config, output_dir):
-    # Sanitize name for filesystem
-    safe_name = config['name'].replace(" ", "_")
-    build_dir = os.path.join("build", safe_name)
+    build_dir = os.path.join("build", config['name'])
     
     print_status(f"\n========================================")
     print_status(f"Building: {config['name']} ({config['target']})")
@@ -90,7 +88,7 @@ def build_target(config, output_dir):
         # 3. Copy artifacts
         try:
             # Create target-specific output directory
-            target_output_dir = os.path.join(output_dir, safe_name)
+            target_output_dir = os.path.join(output_dir, config['name'])
             os.makedirs(target_output_dir, exist_ok=True)
             
             # Source paths
