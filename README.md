@@ -49,15 +49,9 @@ That will create all required firmware files under the build_output directory, w
 
 ### Custom Hardware Targets
 
-If you wish to build the project with custom hardware config files you have two options:
-1. Add the hardware files to the "**main/hwconf**" directory.
-2. Use the HW_NAME build flag
+If you wish to build the project with custom hardware config files you should add the hardware config files to the "**main/hwconf**" directory and use the HW_NAME build flag
 ```bash
 idf.py build -DHW_NAME="VESC Express T"
 ```
-
-For option 1. you could for instance add you're two files `hw_my_device.c` and `hw_my_device.h` into "**main/hw_conf**", and then edit the `HW_SOURCE` and `HW_HEADER` macro definitions in "**main/conf_general.h**" to the names of your new files. This method is ideal if you may want to contribute back these hardware configurations to the vesc_express repository!
-
-Option 2. is instead better if you have hardware configuration files in a directory which is outside the vesc_express source tree. You would then, for instance, set the environment variables `HW_SRC=/my/path/to/hw_my_device.c` and `HW_HEADER=/my/path/to/hw_my_device.h` when running `idf.py build`.
 
 **Note:** If you ever change the environment variables, or if when you first start using them, you need to first run `idf.py reconfigure` before building (with the environment variables still set of course!), as the build system unfortunately can't automatically detect this change. Running `idf.py fullclean` has the same effect as this forces cmake to rebuild the build configurations.
