@@ -36,16 +36,6 @@
 #include "bms.h"
 #include "utils.h"
 #include "soc/gpio_sig_map.h"
-
-// ESP32-C6 compatibility for TWAI signal indices
-#if !defined(TWAI_TX_IDX) && defined (TWAI0_TX_IDX)
-#define TWAI_TX_IDX TWAI0_TX_IDX
-#endif
-
-#if !defined(TWAI_RX_IDX) && defined(TWAI0_RX_IDX)
-#define TWAI_RX_IDX TWAI0_RX_IDX
-#endif
-
 #include <string.h>
 
 // Status messages

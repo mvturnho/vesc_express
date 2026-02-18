@@ -29,10 +29,12 @@
 	#define SET_PIN(pin) 			(GPIO.out_w1ts = 1 << (pin))
 	#define CLEAR_PIN(pin) 			(GPIO.out_w1tc = 1 << (pin))
 	#define READ_PIN(pin)			((GPIO.in >> (pin)) & 0x1)
-#else
+#elif CONFIG_IDF_TARGET_ESP32C3
 	#define SET_PIN(pin) 			(GPIO.out_w1ts.val = 1 << (pin))
 	#define CLEAR_PIN(pin) 			(GPIO.out_w1tc.val = 1 << (pin))
 	#define READ_PIN(pin)			((GPIO.in.data >> (pin)) & 0x1)
+#else
+	#error "Unsupported target"
 #endif
 #define WRITE_PIN(pin, level)	{if (level) SET_PIN(pin); else CLEAR_PIN(pin);}
 
