@@ -1,7 +1,7 @@
 #ifndef HW_DEVKIT_S3_H_
 #define HW_DEVKIT_S3_H_
 
-#define HW_NAME                 "DevKit S3"
+#define HW_NAME                 "Devkit S3"
 #define HW_TARGET               "esp32s3"
 #define HW_UART_COMM
 
