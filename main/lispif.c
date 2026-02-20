@@ -100,13 +100,15 @@ extern lbm_const_heap_t *lbm_const_heap_state;
 
 void lispif_init(void) {
 #ifdef CONFIG_IDF_TARGET_ESP32S3
-	heap_size = (3072 + 512);
+	heap_size = (4096 + 512);
 	mem_size = LBM_MEMORY_SIZE_KB(48);
 	bitmap_size = LBM_BITMAP_SIZE_KB(48);
-#else
+#elif CONFIG_IDF_TARGET_ESP32C3
 	heap_size = (2048 + 512);
 	mem_size = LBM_MEMORY_SIZE_KB(32);
 	bitmap_size = LBM_BITMAP_SIZE_KB(32);
+#else 
+	#error "Unsupported target"
 #endif
 
 	if (backup.config.wifi_mode == WIFI_MODE_DISABLED &&
