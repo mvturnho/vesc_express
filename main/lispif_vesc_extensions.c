@@ -80,6 +80,7 @@
 #include "nvs_flash.h"
 #include "esp_sleep.h"
 #include "soc/rtc.h"
+#include "esp_private/esp_clk.h"
 #include "esp_bt.h"
 #include "esp_bt_main.h"
 #include "esp_partition.h"
@@ -95,6 +96,14 @@
 #include <ctype.h>
 #include <stdarg.h>
 #include <string.h>
+
+#if CONFIG_IDF_TARGET_ESP32S3
+	#define LBM_EVENTS_TASK_STACK_SIZE 1280
+#elif CONFIG_IDF_TARGET_ESP32C3
+	#define LBM_EVENTS_TASK_STACK_SIZE 640
+#else
+	#error "Unsupported target"
+#endif
 
 typedef struct {
 	// BMS
@@ -146,6 +155,7 @@ typedef struct {
 	lbm_uint part_running;
 	lbm_uint git_branch;
 	lbm_uint git_hash;
+	lbm_uint cpu_freq;
 
 	// FW Info
 	lbm_uint version;
@@ -284,6 +294,8 @@ static bool compare_symbol(lbm_uint sym, lbm_uint *comp) {
 			lbm_add_symbol_const("git-branch", comp);
 		} else if (comp == &syms_vesc.git_hash) {
 			lbm_add_symbol_const("git-hash", comp);
+		} else if (comp == &syms_vesc.cpu_freq) {
+			lbm_add_symbol_const("cpu-freq", comp);
 		}
 
 		else if (comp == &syms_vesc.version) {
@@ -1171,6 +1183,8 @@ static lbm_value ext_sysinfo(lbm_value *args, lbm_uint argn) {
 		} else {
 			res = ENC_SYM_MERROR;
 		}
+	} else if (compare_symbol(name, &syms_vesc.cpu_freq)) {
+		res = lbm_enc_i(esp_clk_cpu_freq() / 1000000);
 	}
 
 	return res;
@@ -3486,9 +3500,14 @@ static lbm_value ext_sleep_config_wakeup_pin(lbm_value *args, lbm_uint argn) {
 	}
 
 	gpio_set_direction(pin, GPIO_MODE_INPUT);
-	esp_deep_sleep_enable_gpio_wakeup(1 << pin,
-			mode ? ESP_GPIO_WAKEUP_GPIO_HIGH : ESP_GPIO_WAKEUP_GPIO_LOW);
-
+#if CONFIG_IDF_TARGET_ESP32S3
+	esp_sleep_enable_ext0_wakeup(pin, mode ? 1 : 0); 
+	esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+#elif CONFIG_IDF_TARGET_ESP32C3
+	esp_deep_sleep_enable_gpio_wakeup(1 << pin,mode ? ESP_GPIO_WAKEUP_GPIO_HIGH : ESP_GPIO_WAKEUP_GPIO_LOW);
+#else
+	#error "Unsupported target"
+#endif
 	return ENC_SYM_TRUE;
 }
 
@@ -6464,7 +6483,7 @@ void lispif_load_vesc_extensions(bool main_found) {
 		}
 		xSemaphoreGive(rmsg_mutex);
 
-		xTaskCreatePinnedToCore(event_task, "LBM Events", 640, NULL, 7, NULL, tskNO_AFFINITY);
+		xTaskCreatePinnedToCore(event_task, "LBM Events", LBM_EVENTS_TASK_STACK_SIZE, NULL, 7, NULL, tskNO_AFFINITY);
 		event_task_running = true;
 	}
 

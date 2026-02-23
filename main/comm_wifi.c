@@ -46,6 +46,14 @@
 #define WIFI_CONNECTED_BIT		BIT0
 #define WIFI_FAIL_BIT			BIT1
 
+#if CONFIG_IDF_TARGET_ESP32S3
+	#define UDP_MULTICAST_TASK_STACK_SIZE 2028
+#elif CONFIG_IDF_TARGET_ESP32C3
+	#define UDP_MULTICAST_TASK_STACK_SIZE 1024
+#else
+	#error "Unsupported target"
+#endif
+
 static EventGroupHandle_t s_wifi_event_group;
 static esp_ip4_addr_t ip = {0};
 static bool is_connecting = false;
@@ -554,7 +562,7 @@ void comm_wifi_init(void) {
 		xTaskCreatePinnedToCore(tcp_task_hub, "tcp_hub", 3500, NULL, 8, NULL, tskNO_AFFINITY);
 	}
 
-	xTaskCreatePinnedToCore(broadcast_task, "udp_multicast", 1024, NULL, 8, NULL, tskNO_AFFINITY);
+	xTaskCreatePinnedToCore(broadcast_task, "udp_multicast", UDP_MULTICAST_TASK_STACK_SIZE, NULL, 8, NULL, tskNO_AFFINITY);
 }
 
 WIFI_MODE comm_wifi_get_mode(void) {
@@ -729,7 +737,7 @@ void comm_wifi_set_event_listener(comm_wifi_event_cb_t handler) {
 struct sockaddr_in create_sockaddr_in(ip_addr_t addr, uint16_t port) {
 	struct sockaddr_in result = {0};
 	// *Pretty* sure this works
-	memcpy(&result.sin_addr, &addr, sizeof(ip_addr_t));
+	result.sin_addr.s_addr = ip_2_ip4(&addr)->addr;
 	result.sin_family = AF_INET;
 	result.sin_port   = htons(port);
 	// TODO: Is this necessary and correct if so?
