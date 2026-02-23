@@ -109,6 +109,7 @@ set(COMPONENT_ADD_INCLUDEDIRS
 "hwconf/vesc/nanolog"
 "hwconf/vesc/vbms16"
 "hwconf/vesc/rmcore"
+"hwconf/vesc/dash16"
 "hwconf/rescue"
 "hwconf/avaspark"
 
