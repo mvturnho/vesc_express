@@ -181,7 +181,7 @@ def build_target(config, output_dir, prev_target=None, idx=0, total=0):
         # 3. Copy artifacts
         set_status(f"{idx}/{total} | {config['name']} ({config['target']}) | Copying artifacts")
         try:
-            target_output_dir = os.path.join(output_dir, config['name'])
+            target_output_dir = os.path.join(output_dir, config['target'], config['name'])
             os.makedirs(target_output_dir, exist_ok=True)
 
             # Source paths
@@ -218,6 +218,21 @@ def main():
         print_status("Error: main/hwconf directory not found", Colors.FAIL)
         sys.exit(1)
 
+    # This is the firmware stub string
+    res_firmwares_string = '        <file>TARGET_DESTINATION_DIRECTORY/TARGET_DESTINATION_FILENAME</file>\n'
+
+    # This is the XML stub string
+    resource_xml_stub_string = '''
+<RCC>
+   <qresource prefix="/res/firmwares_esp/">
+REPLACEABLE_STRING
+   </qresource>
+</RCC>
+'''
+
+    # Declare an empty string
+    res_string = ""
+
     # Prepare output directory
     output_dir = "build_output"
     if not os.path.exists(output_dir):
@@ -239,8 +254,19 @@ def main():
             set_status(f"{idx}/{total} | {config['name']} ({config['target']}) | Starting")
             if build_target(config, output_dir, prev_target, idx, total):
                 success_count += 1
+
+                target_res_string = res_firmwares_string.replace("TARGET_DESTINATION_DIRECTORY",
+                    config['target']).replace("TARGET_DESTINATION_FILENAME", config['name'] + "/bootloader.bin")
+                res_string = res_string + target_res_string
+                target_res_string = res_firmwares_string.replace("TARGET_DESTINATION_DIRECTORY",
+                    config['target']).replace("TARGET_DESTINATION_FILENAME", config['name'] + "/partition-table.bin")
+                res_string = res_string + target_res_string
+                target_res_string = res_firmwares_string.replace("TARGET_DESTINATION_DIRECTORY",
+                    config['target']).replace("TARGET_DESTINATION_FILENAME", config['name'] + "/vesc_express.bin")
+                res_string = res_string + target_res_string
             else:
                 failed_configs.append(config['name'])
+
             prev_target = config['target']
     except KeyboardInterrupt:
         clear_status()
@@ -252,6 +278,9 @@ def main():
     print("\n" + "="*40)
     print(f"Build Summary: {success_count}/{total} Succeeded")
     print(f"Artifacts: {os.path.abspath(output_dir)}")
+
+    with open(os.path.join(output_dir, 'res_fw.qrc'), 'w') as f:
+        print(resource_xml_stub_string.replace("REPLACEABLE_STRING", res_string[:-1]), file=f)
 
     if failed_configs:
         print_status(f"Failed: {', '.join(failed_configs)}", Colors.FAIL)
