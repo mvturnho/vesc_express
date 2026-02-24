@@ -50,7 +50,7 @@ endforeach()
 if(DEFINED HW_NAME AND DEFINED HW_TARGET AND DEFINED HW_FILE_NAME)
     # Get file name without extension
     string(REGEX MATCH "([^/]+)$" HW_FILE ${HW_FILE_NAME})
-    string(REGEX REPLACE ".h" "" HW_FILE ${HW_FILE})
+    string(REPLACE ".h" "" HW_FILE ${HW_FILE})
 
     # IMPORTANT: Set IDF_TARGET before including project.cmake
     if(NOT DEFINED IDF_TARGET)
