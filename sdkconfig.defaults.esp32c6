@@ -574,13 +574,6 @@ CONFIG_BOOT_ROM_LOG_ALWAYS_ON=y
 # end of Boot ROM Behavior
 
 #
-# ESP-TEE (Trusted Execution Environment)
-#
-# CONFIG_SECURE_ENABLE_TEE is not set
-CONFIG_SECURE_TEE_LOG_LEVEL=0
-# end of ESP-TEE (Trusted Execution Environment)
-
-#
 # Serial flasher config
 #
 # CONFIG_ESPTOOLPY_NO_STUB is not set
