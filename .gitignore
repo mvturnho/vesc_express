@@ -2,6 +2,8 @@
 .settings
 .cproject
 build
+build_assist
+build_display
 esp_idf_components
 sdkconfig.old
 sdkconfig
@@ -13,5 +15,4 @@ build_output/
 # feel like making that decision right now...
 managed_components/
 dependencies.lock
-components/
-components/*
+components
